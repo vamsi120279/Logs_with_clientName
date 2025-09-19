@@ -1,16 +1,15 @@
-# docker-compose.cloud.yml
-# (No "version:" key to avoid the Compose deprecation warning)
+version: "3.8"
 
 services:
   postgres:
     image: postgres:15
+    container_name: log-pipeline-postgres
     environment:
       POSTGRES_USER: logs_user
       POSTGRES_PASSWORD: logs_pass
       POSTGRES_DB: logsdb
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
 
   log-collector:
     build: ./log-collector
@@ -21,19 +20,17 @@ services:
       - POSTGRES_DB=logsdb
       - POSTGRES_USER=logs_user
       - POSTGRES_PASSWORD=logs_pass
-      # Persistor hostnames (if collector needs to call them)
-      - PERSISTOR_AUTH=persistor-auth
-      - PERSISTOR_PAYMENT=persistor-payment
-      - PERSISTOR_SYSTEM=persistor-system
-      - PERSISTOR_APPLICATION=persistor-application
-      - PERSISTOR_PORT=6000
+      - PERSISTOR_AUTH=http://persistor-auth:6000
+      - PERSISTOR_PAYMENT=http://persistor-payment:6000
+      - PERSISTOR_SYSTEM=http://persistor-system:6000
+      - PERSISTOR_APPLICATION=http://persistor-application:6000
+      - SPLUNK_HEC=http://splunk:8088/services/collector
+      - SPLUNK_TOKEN=splunk-token
     depends_on:
       - postgres
-    volumes:
-      - collector-data:/data
+      - splunk
     ports:
-      - "5002:5002"    # expose collector to the internet (EC2)
-    restart: unless-stopped
+      - "5002:5002"
 
   persistor-auth:
     build: ./persistor-auth
@@ -42,7 +39,8 @@ services:
       - STORE_FILE=/data/auth_logs.json
     volumes:
       - persistor-auth-data:/data
-    restart: unless-stopped
+    ports:
+      - "6001:6000"
 
   persistor-payment:
     build: ./persistor-payment
@@ -51,7 +49,8 @@ services:
       - STORE_FILE=/data/payment_logs.json
     volumes:
       - persistor-payment-data:/data
-    restart: unless-stopped
+    ports:
+      - "6002:6000"
 
   persistor-system:
     build: ./persistor-system
@@ -60,7 +59,8 @@ services:
       - STORE_FILE=/data/system_logs.json
     volumes:
       - persistor-system-data:/data
-    restart: unless-stopped
+    ports:
+      - "6003:6000"
 
   persistor-application:
     build: ./persistor-application
@@ -69,17 +69,49 @@ services:
       - STORE_FILE=/data/application_logs.json
     volumes:
       - persistor-application-data:/data
-    restart: unless-stopped
+    ports:
+      - "6004:6000"
 
   log-ui:
     build: ./log-ui
     container_name: log-pipeline-log-ui
-    # UI calls /api/* (nginx proxy in log-ui will forward to log-collector)
     ports:
-      - "80:80"        # UI available on EC2 public IP:80
+      - "80:80"
     depends_on:
       - log-collector
-    restart: unless-stopped
+
+  splunk:
+    image: splunk/splunk:9.0
+    container_name: log-pipeline-splunk
+    environment:
+      - SPLUNK_START_ARGS=--accept-license
+      - SPLUNK_PASSWORD=SplunkPass123
+      - SPLUNK_USERNAME=admin
+    ports:
+      - "8000:8000"   # Splunk Web
+      - "8088:8088"   # HEC
+      - "9997:9997"   # Forwarder
+    volumes:
+      - splunk-data:/opt/splunk/var
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: log-pipeline-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: log-pipeline-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
 
 volumes:
   pgdata:
@@ -88,4 +120,5 @@ volumes:
   persistor-payment-data:
   persistor-system-data:
   persistor-application-data:
-
+  splunk-data:
+  grafana-data:
