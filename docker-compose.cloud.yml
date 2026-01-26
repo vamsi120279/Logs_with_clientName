@@ -1,6 +1,3 @@
-# docker-compose.cloud.yml
-# (No "version:" key to avoid the Compose deprecation warning)
-
 services:
   postgres:
     image: postgres:15
@@ -14,14 +11,13 @@ services:
 
   log-collector:
     build: ./log-collector
-    container_name: log-pipeline-log-collector
+    container_name: log-collector
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=logsdb
       - POSTGRES_USER=logs_user
       - POSTGRES_PASSWORD=logs_pass
-      # Persistor hostnames (if collector needs to call them)
       - PERSISTOR_AUTH=persistor-auth
       - PERSISTOR_PAYMENT=persistor-payment
       - PERSISTOR_SYSTEM=persistor-system
@@ -32,12 +28,12 @@ services:
     volumes:
       - collector-data:/data
     ports:
-      - "5002:5002"    # expose collector to the internet (EC2)
+      - "5002:5002"
     restart: unless-stopped
 
   persistor-auth:
     build: ./persistor-auth
-    container_name: log-pipeline-persistor-auth
+    container_name: persistor-auth
     environment:
       - STORE_FILE=/data/auth_logs.json
     volumes:
@@ -46,7 +42,7 @@ services:
 
   persistor-payment:
     build: ./persistor-payment
-    container_name: log-pipeline-persistor-payment
+    container_name: persistor-payment
     environment:
       - STORE_FILE=/data/payment_logs.json
     volumes:
@@ -55,37 +51,10 @@ services:
 
   persistor-system:
     build: ./persistor-system
-    container_name: log-pipeline-persistor-system
+    container_name: persistor-system
     environment:
       - STORE_FILE=/data/system_logs.json
     volumes:
       - persistor-system-data:/data
     restart: unless-stopped
-
-  persistor-application:
-    build: ./persistor-application
-    container_name: log-pipeline-persistor-application
-    environment:
-      - STORE_FILE=/data/application_logs.json
-    volumes:
-      - persistor-application-data:/data
-    restart: unless-stopped
-
-  log-ui:
-    build: ./log-ui
-    container_name: log-pipeline-log-ui
-    # UI calls /api/* (nginx proxy in log-ui will forward to log-collector)
-    ports:
-      - "80:80"        # UI available on EC2 public IP:80
-    depends_on:
-      - log-collector
-    restart: unless-stopped
-
-volumes:
-  pgdata:
-  collector-data:
-  persistor-auth-data:
-  persistor-payment-data:
-  persistor-system-data:
-  persistor-application-data:
 
