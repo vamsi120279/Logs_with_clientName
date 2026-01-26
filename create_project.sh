@@ -1,3 +1,5 @@
+# This script creates a scaffold for a log processing system with multiple components.
+
 #!/usr/bin/env bash
 set -e
 
